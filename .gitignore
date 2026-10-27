@@ -1,0 +1,28 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+
+# Data (raw downloads and local Neo4j volumes stay out of git)
+data/raw/
+data/processed/
+neo4j/data/
+neo4j/logs/
+neo4j/import/
+neo4j/plugins/
+
+# Eval outputs
+eval/results/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,19 @@
+# Companies to ingest. Keep to one sector so they share suppliers, competitors and investors.
+# Semiconductors is a placeholder; swap the sector and tickers as you like.
+sector: Semiconductors
+filings:
+  forms: ["10-K"]
+  years: [2024, 2025]
+companies:
+  - { ticker: NVDA, name: NVIDIA Corp }
+  - { ticker: AMD, name: Advanced Micro Devices }
+  - { ticker: INTC, name: Intel Corp }
+  - { ticker: AVGO, name: Broadcom Inc }
+  - { ticker: QCOM, name: Qualcomm Inc }
+  - { ticker: TXN, name: Texas Instruments }
+  - { ticker: MU, name: Micron Technology }
+  - { ticker: AMAT, name: Applied Materials }
+  - { ticker: LRCX, name: Lam Research }
+  - { ticker: KLAC, name: KLA Corp }
+  - { ticker: ADI, name: Analog Devices }
+  - { ticker: MRVL, name: Marvell Technology }
