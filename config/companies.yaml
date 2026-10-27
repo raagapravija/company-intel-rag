@@ -1,19 +1,19 @@
 # Companies to ingest. Keep to one sector so they share suppliers, competitors and investors.
-# Semiconductors is a placeholder; swap the sector and tickers as you like.
+# `aliases` are how people refer to the company in questions; used to filter retrieval.
 sector: Semiconductors
 filings:
   forms: ["10-K"]
   years: [2024, 2025]
 companies:
-  - { ticker: NVDA, name: NVIDIA Corp }
-  - { ticker: AMD, name: Advanced Micro Devices }
-  - { ticker: INTC, name: Intel Corp }
-  - { ticker: AVGO, name: Broadcom Inc }
-  - { ticker: QCOM, name: Qualcomm Inc }
-  - { ticker: TXN, name: Texas Instruments }
-  - { ticker: MU, name: Micron Technology }
-  - { ticker: AMAT, name: Applied Materials }
-  - { ticker: LRCX, name: Lam Research }
-  - { ticker: KLAC, name: KLA Corp }
-  - { ticker: ADI, name: Analog Devices }
-  - { ticker: MRVL, name: Marvell Technology }
+  - { ticker: NVDA, name: NVIDIA Corp, aliases: [nvidia] }
+  - { ticker: AMD, name: Advanced Micro Devices, aliases: [amd, advanced micro devices] }
+  - { ticker: INTC, name: Intel Corp, aliases: [intel] }
+  - { ticker: AVGO, name: Broadcom Inc, aliases: [broadcom] }
+  - { ticker: QCOM, name: Qualcomm Inc, aliases: [qualcomm] }
+  - { ticker: TXN, name: Texas Instruments, aliases: [texas instruments, ti] }
+  - { ticker: MU, name: Micron Technology, aliases: [micron] }
+  - { ticker: AMAT, name: Applied Materials, aliases: [applied materials] }
+  - { ticker: LRCX, name: Lam Research, aliases: [lam research, lam] }
+  - { ticker: KLAC, name: KLA Corp, aliases: [kla] }
+  - { ticker: ADI, name: Analog Devices, aliases: [analog devices] }
+  - { ticker: MRVL, name: Marvell Technology, aliases: [marvell] }

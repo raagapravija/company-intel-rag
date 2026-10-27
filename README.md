@@ -19,7 +19,7 @@ citations and checks that every claim is grounded. Ragas measures each part.
 **Ingestion**
 
 ```
-10-K / 10-Q / news ─┬─> chunk + embed (voyage-4-large) ──> vector + full-text index ─┐
+10-K / 10-Q / news ─┬─> chunk + embed (BGE-M3, local) ───> vector + full-text index ─┐
                     └─> LLM entity extraction ──────────> entities + relationships ─┼─> Neo4j
 XBRL / Form 13F ──────> structured load ────────────────> financial facts, holdings ┘
 ```
@@ -41,38 +41,54 @@ company it belongs to and on to that company's suppliers. See [docs/schema.md](d
 | Layer | Choice |
 |---|---|
 | Graph + vector + full-text | Neo4j 5 (Community, Docker) |
-| Embeddings / reranking | Voyage `voyage-4-large`, Voyage reranker |
+| Embeddings / reranking | `BAAI/bge-m3` + `BAAI/bge-reranker-v2-m3`, run locally (Voyage optional) |
 | Orchestration | LangGraph |
-| LLM | Claude |
-| Evaluation | Ragas + custom router and Text2Cypher metrics |
-| Tracing | Langfuse |
+| LLM | Groq free tier (`llama-3.3-70b-versatile`) or Ollama, via one OpenAI-compatible client |
+| Evaluation | Ragas (judge: `openai/gpt-oss-120b` on Groq) + custom router metric |
+| Tracing | Langfuse (free tier) |
 | API / UI | FastAPI, Streamlit |
+
+**Cost: $0, no credit card.** SEC EDGAR is free, embeddings and reranking run on your
+machine, and Groq's free tier covers answering and evaluation (about 1,000 requests/day
+per model). For fully offline use, point `LLM_BASE_URL` at Ollama (see `.env.example`).
 
 ## Setup
 
-Needs Python 3.11+, [uv](https://docs.astral.sh/uv/) and Docker.
+Needs Python 3.11+, [uv](https://docs.astral.sh/uv/) and Docker. About 6 GB of disk for
+PyTorch and the two local models (downloaded on first use).
 
 ```bash
-cp .env.example .env      # add Neo4j password, VOYAGE_API_KEY, ANTHROPIC_API_KEY, SEC_USER_AGENT
+cp .env.example .env      # set NEO4J_PASSWORD, LLM_API_KEY (Groq), SEC_USER_AGENT (your email)
 make install              # uv sync --all-extras
 make up                   # start Neo4j (browser at http://localhost:7474)
 make schema               # create constraints and indexes
 make test                 # unit tests (no Neo4j or API keys needed)
 ```
 
+Then:
+
+```bash
+make ingest T="NVDA AMD"  # try two companies first; `make ingest` does all 12
+make ask Q="What does NVIDIA say about supply-chain risk?"
+```
+
+Ingestion caches filings under `data/raw/` and skips anything already loaded, so it is
+safe to stop and re-run. On a laptop CPU, embedding one 10-K takes a few minutes.
+
 Companies to ingest are listed in [config/companies.yaml](config/companies.yaml)
-(12 semiconductor companies to start; one sector so the graph is densely connected).
+(12 semiconductor companies; one sector so the graph is densely connected).
 
 ## Layout
 
 ```
 src/company_intel/
   config.py, db.py, schema.py   settings, Neo4j driver, constraints + indexes
-  ingestion/                    edgar, chunking, embed, structured, extract, news
-  retrieval/                    hybrid, rerank, text2cypher, graph
-  agent/                        LangGraph state + graph
-  api/                          FastAPI app
-eval/                           questions.jsonl, run_ragas.py
+  embeddings.py, llm.py         local/Voyage embeddings; OpenAI-compatible LLM client
+  ingestion/                    edgar, chunking, load, run (phase 1); structured, extract, news
+  retrieval/                    hybrid, rerank (phase 1); text2cypher, graph
+  agent/                        LangGraph state + graph, answer generation with citations
+  ask.py, api/                  CLI and FastAPI app
+eval/                           questions, draft -> review workflow, Ragas runner
 docs/schema.md                  graph model
 ```
 
@@ -81,7 +97,8 @@ docs/schema.md                  graph model
 Each phase ends with a Ragas run compared against the phase 1 baseline.
 
 - [x] **Phase 0** Skeleton: config, Docker, schema, agent graph shape, tests
-- [ ] **Phase 1** Plain vector RAG: EDGAR fetch, section-aware chunking, Voyage embeddings, hybrid search, rerank, answer. Baseline Ragas scores.
+- [x] **Phase 1** Plain vector RAG: EDGAR fetch, section-aware chunking, local embeddings, hybrid search, rerank, cited answers, question review workflow, Ragas runner
+- [ ] **Phase 1b** First real run: ingest, verify ~15 lookup questions, record baseline Ragas scores
 - [ ] **Phase 2** Structured data: XBRL financial facts, 13F holdings, Text2Cypher with read-only user
 - [ ] **Phase 3** Knowledge graph: LLM entity + relationship extraction, entity resolution, graph traversal retriever
 - [ ] **Phase 4** News ingestion and recency-aware retrieval
@@ -89,7 +106,6 @@ Each phase ends with a Ragas run compared against the phase 1 baseline.
 
 ## Evaluation
 
-See [eval/README.md](eval/README.md). Hand-write 30-50 questions with reference answers
-across four types (lookup, numeric, relational, summary), then extend with Ragas
-synthetic generation. Scores are reported per question type so each retriever's
-contribution is visible.
+See [eval/README.md](eval/README.md). Every reference answer is checked by a person
+against the source filing before it counts; numeric references come straight from SEC
+data. Scores are reported per question type so each retriever's contribution is visible.

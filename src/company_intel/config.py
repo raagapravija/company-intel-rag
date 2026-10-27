@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# OpenAI-compatible endpoints for free LLM options.
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+OLLAMA_BASE_URL = "http://localhost:11434/v1"
 
 
 class Settings(BaseSettings):
@@ -23,28 +28,49 @@ class Settings(BaseSettings):
     neo4j_readonly_user: str = "reader"
     neo4j_readonly_password: SecretStr = SecretStr("change-me-too")
 
-    # Embeddings + reranking
-    voyage_api_key: SecretStr | None = None
-    embedding_model: str = "voyage-4-large"
+    # Embeddings: "local" runs BGE-M3 on your machine (free); "voyage" uses the Voyage API
+    embedding_provider: Literal["local", "voyage"] = "local"
+    embedding_model: str = "BAAI/bge-m3"
     embedding_dimensions: int = Field(1024, gt=0, le=4096)
-    rerank_model: str = "rerank-2.5"
+    embedding_batch_size: int = 16
 
-    # LLM
-    anthropic_api_key: SecretStr | None = None
-    llm_model: str = "claude-sonnet-5-5"
-    eval_judge_model: str = "claude-opus-5-5"
+    # Reranking: same choice
+    rerank_provider: Literal["local", "voyage", "none"] = "local"
+    rerank_model: str = "BAAI/bge-reranker-v2-m3"
+
+    voyage_api_key: SecretStr | None = None
+
+    # LLM: any OpenAI-compatible endpoint (Groq free tier by default, or Ollama locally)
+    llm_base_url: str = GROQ_BASE_URL
+    llm_api_key: SecretStr = SecretStr("")
+    llm_model: str = "llama-3.3-70b-versatile"
+    llm_max_tokens: int = 1024
+
+    # Ragas judge: use a different model from the one answering, kept fixed across runs
+    eval_judge_base_url: str = GROQ_BASE_URL
+    eval_judge_api_key: SecretStr | None = None  # falls back to llm_api_key
+    eval_judge_model: str = "openai/gpt-oss-120b"
 
     # SEC
     sec_user_agent: str = "company-intel-rag contact@example.com"
+
+    # Retrieval
+    retrieval_k: int = 30
+    rerank_top_k: int = 8
 
     # Paths
     data_dir: Path = PROJECT_ROOT / "data"
     companies_file: Path = PROJECT_ROOT / "config" / "companies.yaml"
 
+    @property
+    def raw_dir(self) -> Path:
+        return self.data_dir / "raw"
+
 
 class CompanyRef(BaseModel):
     ticker: str
     name: str
+    aliases: list[str] = []
 
 
 class FilingScope(BaseModel):

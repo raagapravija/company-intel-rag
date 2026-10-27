@@ -26,3 +26,6 @@ eval/results/
 .vscode/
 .idea/
 .DS_Store
+
+# Ragas judge cache
+eval/.cache/

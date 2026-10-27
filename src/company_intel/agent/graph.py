@@ -24,23 +24,49 @@ def route(state: AgentState) -> AgentState:
 
 
 def retrieve(state: AgentState) -> AgentState:
-    raise NotImplementedError("Phase 1: call hybrid_search / text2cypher / graph_search")
+    """Run each retriever the router chose. Phase 2/3 add text2cypher and graph."""
+    from company_intel.retrieval.hybrid import hybrid_search
+
+    contexts = []
+    for name in state.get("retrievers", ["hybrid"]):
+        if name == "hybrid":
+            contexts += hybrid_search(state["question"])
+        else:
+            raise NotImplementedError(f"retriever {name!r} arrives in a later phase")
+    return {"contexts": contexts}
 
 
 def rerank_node(state: AgentState) -> AgentState:
-    raise NotImplementedError("Phase 1: call retrieval.rerank.rerank")
+    from company_intel.retrieval.rerank import rerank
+
+    # Contexts accumulate across retries; drop duplicates before reranking.
+    seen, unique = set(), []
+    for c in state.get("contexts", []):
+        key = c.metadata.get("chunk_id") or c.text
+        if key not in seen:
+            seen.add(key)
+            unique.append(c)
+    return {"reranked": rerank(state["question"], unique)}
 
 
 def generate(state: AgentState) -> AgentState:
-    raise NotImplementedError("Phase 1: answer with citations from reranked contexts")
+    from company_intel.agent.answer import generate_answer
+
+    answer, citations = generate_answer(state["question"], state.get("reranked", []))
+    return {"answer": answer, "citations": citations}
 
 
 def verify(state: AgentState) -> AgentState:
-    raise NotImplementedError("Phase 5: check each claim is supported; set grounded/missing_info")
+    """Phase 5 replaces this with an LLM claim-by-claim grounding check.
+    For now: an answer with no citations counts as ungrounded."""
+    return {"grounded": bool(state.get("citations"))}
 
 
 def after_verify(state: AgentState) -> str:
     if state.get("grounded", True) or state.get("attempts", 0) >= MAX_ATTEMPTS:
+        return END
+    # Retrying only helps when the verifier says what to look for differently.
+    if not state.get("missing_info"):
         return END
     return "route"
 
