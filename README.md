@@ -43,8 +43,8 @@ company it belongs to and on to that company's suppliers. See [docs/schema.md](d
 | Graph + vector + full-text | Neo4j 5 (Community, Docker) |
 | Embeddings / reranking | `BAAI/bge-m3` + `BAAI/bge-reranker-v2-m3`, run locally (Voyage optional) |
 | Orchestration | LangGraph |
-| LLM | Groq free tier (`llama-3.3-70b-versatile`) or Ollama, via one OpenAI-compatible client |
-| Evaluation | Ragas (judge: `openai/gpt-oss-120b` on Groq) + custom router metric |
+| LLM | Groq free tier (`openai/gpt-oss-120b`) or Ollama, via one OpenAI-compatible client |
+| Evaluation | Ragas (judge: `qwen/qwen3.8-27b` on Groq) + custom router metric |
 | Tracing | Langfuse (free tier) |
 | API / UI | FastAPI, Streamlit |
 

@@ -17,6 +17,13 @@ MERGE (f:Filing {accession: $accession})
 MERGE (co)-[:FILED]->(f)
 """
 
+# On a reload, drop the filing's old sections and chunks so nothing stale is left behind.
+DELETE_SECTIONS = """
+MATCH (:Filing {accession: $accession})-[:HAS_SECTION]->(s:Section)
+OPTIONAL MATCH (s)-[:HAS_CHUNK]->(c:Chunk)
+DETACH DELETE s, c
+"""
+
 UPSERT_SECTIONS = """
 MATCH (f:Filing {accession: $accession})
 UNWIND $sections AS s
@@ -93,6 +100,7 @@ def load_filing(
         fiscal_year=ref.fiscal_year,
         url=ref.primary_doc_url,
     )
+    run_write(driver, DELETE_SECTIONS, accession=ref.accession)
     run_write(
         driver,
         UPSERT_SECTIONS,

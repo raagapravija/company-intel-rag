@@ -32,7 +32,7 @@ def _embed(texts: list[str], input_type: str, settings: Settings) -> list[list[f
             texts,
             batch_size=settings.embedding_batch_size,
             normalize_embeddings=True,
-            show_progress_bar=len(texts) > 64,
+            show_progress_bar=False,
         )
         return [v.tolist() for v in vecs]
 

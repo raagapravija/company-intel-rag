@@ -43,13 +43,16 @@ class Settings(BaseSettings):
     # LLM: any OpenAI-compatible endpoint (Groq free tier by default, or Ollama locally)
     llm_base_url: str = GROQ_BASE_URL
     llm_api_key: SecretStr = SecretStr("")
-    llm_model: str = "llama-3.3-70b-versatile"
-    llm_max_tokens: int = 1024
+    llm_model: str = "openai/gpt-oss-120b"
+    # Reasoning models spend part of max_tokens thinking before they answer.
+    llm_max_tokens: int = 2048
+    # "low" keeps gpt-oss fast and within free-tier token limits; empty = don't send it.
+    llm_reasoning_effort: str = "low"
 
     # Ragas judge: use a different model from the one answering, kept fixed across runs
     eval_judge_base_url: str = GROQ_BASE_URL
     eval_judge_api_key: SecretStr | None = None  # falls back to llm_api_key
-    eval_judge_model: str = "openai/gpt-oss-120b"
+    eval_judge_model: str = "qwen/qwen3.8-27b"
 
     # SEC
     sec_user_agent: str = "company-intel-rag contact@example.com"

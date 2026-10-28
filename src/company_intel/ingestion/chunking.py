@@ -8,9 +8,13 @@ Text2Cypher filter by section.
 from __future__ import annotations
 
 import re
+import warnings
 from dataclasses import dataclass, field
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+
+# Inline-XBRL 10-Ks are XHTML; parsing them as HTML is intended and works fine.
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 # Items we ingest from a 10-K, with display titles.
 TENK_ITEMS: dict[str, str] = {
@@ -78,6 +82,101 @@ def _join_heading_lines(text: str) -> str:
 
 
 def split_sections(text: str, accession: str) -> list[Section]:
+    """Split a 10-K into Items. Uses "Item N." headings; if those don't yield real Risk
+    Factors and MD&A sections (e.g. Intel, whose body uses plain titles and lists Items only
+    in a cross-reference index), falls back to finding sections by title."""
+    sections = split_sections_by_item(text, accession)
+    if _looks_complete(sections):
+        return sections
+    by_title = split_sections_by_title(text, accession)
+    return by_title if _looks_complete(by_title) else sections
+
+
+# A real Risk Factors / MD&A section is pages long; a cross-reference line is not.
+MIN_CORE_CHARS = {"1A": 5000, "7": 5000}
+
+
+def _looks_complete(sections: list[Section]) -> bool:
+    sizes = {s.item: len(s.text) for s in sections}
+    return all(sizes.get(item, 0) >= n for item, n in MIN_CORE_CHARS.items())
+
+
+# Plain-title headings for the fallback. Any line equal to one of these (ignoring case,
+# punctuation and an optional "Item N." prefix) starts a section.
+TITLE_ALIASES: dict[str, list[str]] = {
+    "1": [
+        "business", "our business", "fundamentals of our business", "fundamental of our business"
+    ],
+    "1A": ["risk factors"],
+    "1C": ["cybersecurity"],
+    "2": ["properties"],
+    "3": ["legal proceedings"],
+    "7": [
+        "management's discussion and analysis",
+        "management's discussion and analysis of financial condition and results of operations",
+    ],
+    "7A": ["quantitative and qualitative disclosures about market risk"],
+}
+# Other top-level titles that end a section (not ingested themselves).
+STOP_TITLES = [
+    "unresolved staff comments", "mine safety disclosures", "other key information",
+    "market for our common stock", "critical accounting estimates", "controls and procedures",
+    "financial statements and supplemental details", "financial statements and supplementary data",
+    "exhibits", "exhibits and financial statement schedules", "form 10-k summary",
+    "information about our executive officers", "other information",
+    "disclosure pursuant to section 13(r) of the securities exchange act of 1934",
+    "forward-looking statements",
+]
+MAX_TITLE_SECTION_CHARS = 150_000
+
+
+def _normalize_title(line: str) -> str:
+    line = line.strip().lower().replace("’", "'")
+    line = re.sub(r"^item\s*\d{1,2}[a-c]?\s*[.:\-–—]?\s*", "", line)
+    return line.rstrip(" .:")
+
+
+def split_sections_by_title(text: str, accession: str) -> list[Section]:
+    title_to_item = {t: item for item, ts in TITLE_ALIASES.items() for t in ts}
+    stops = set(STOP_TITLES)
+
+    # (offset, key) for every heading line; key is the item, or "STOP".
+    heads: list[tuple[int, str]] = []
+    pos = 0
+    for line in text.split("\n"):
+        norm = _normalize_title(line)
+        if norm in title_to_item:
+            heads.append((pos, title_to_item[norm]))
+        elif norm in stops:
+            heads.append((pos, "STOP"))
+        pos += len(line) + 1
+
+    best: dict[str, tuple[int, int]] = {}
+    for i, (start, key) in enumerate(heads):
+        if key == "STOP":
+            continue
+        # A section runs to the next *different* heading, so a title repeated as a page
+        # header ("Risk Factors" at the top of every page) doesn't cut it short.
+        end = len(text)
+        for nxt, nkey in heads[i + 1 :]:
+            if nkey != key:
+                end = nxt
+                break
+        end = min(end, start + MAX_TITLE_SECTION_CHARS)
+        if key not in best or (end - start) > (best[key][1] - best[key][0]):
+            best[key] = (start, end)
+
+    sections = []
+    for item, title in TENK_ITEMS.items():
+        if item in best:
+            start, end = best[item]
+            body = text[start:end].strip()
+            if len(body) >= MIN_SECTION_CHARS:
+                sections.append(Section(f"{accession}:{item}", item, title, body))
+    return sections
+
+
+def split_sections_by_item(text: str, accession: str) -> list[Section]:
     """Find each Item's body. The table of contents also lists every Item, so for each
     Item we keep the occurrence followed by the most text, which is the real section."""
     matches = list(ITEM_HEADING.finditer(text))

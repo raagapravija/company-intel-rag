@@ -72,3 +72,51 @@ def test_chunks_are_bounded_overlapping_and_ordered():
         assert set(a.text.split()) & set(b.text.split())
     covered = set(" ".join(c.text for c in chunks).split())
     assert covered == set(words)
+
+
+INTEL_STYLE = "\n".join(
+    [
+        "Page",
+        "Our Business",
+        "Management's Discussion and Analysis",
+        "Risk Factors",
+        "Other Key Information",
+        "Our Business",
+        "We design and manufacture CPUs. " * 60,
+        "Our Business",  # repeated page header must not end the section
+        "We also run a foundry business. " * 60,
+        "Management’s Discussion and Analysis",  # curly apostrophe
+        "Operating Segment Results",
+        "Revenue declined in 2025. " * 300,
+        "Critical Accounting Estimates",
+        "Inventory reserves need judgment. " * 40,
+        "Risk Factors",
+        "We face intense competition. " * 200,
+        "Risk Factors",
+        "Export controls limit sales to China. " * 200,
+        "Other Key Information",
+        "Executive officers are listed here. " * 40,
+        "Form 10-K Cross-Reference Index",
+        "Item 1A. Risk Factors",
+        "Pages 40-60",
+        "Item 7. Management's Discussion and Analysis",
+        "Pages 20-39",
+    ]
+)
+
+
+def test_title_fallback_for_filings_without_item_headings():
+    sections = {s.item: s for s in split_sections(INTEL_STYLE, "intc")}
+    assert set(sections) == {"1", "1A", "7"}
+    assert "foundry business" in sections["1"].text  # spans the repeated page header
+    assert "Revenue declined" in sections["7"].text
+    assert "Inventory reserves" not in sections["7"].text  # stop title ends MD&A
+    assert "intense competition" in sections["1A"].text
+    assert "Export controls" in sections["1A"].text
+    assert "Executive officers" not in sections["1A"].text
+    assert "Pages" not in sections["1A"].text  # not the cross-reference index
+
+
+def test_standard_filings_do_not_use_fallback():
+    sections = {s.item: s for s in split_sections(html_to_text(SAMPLE_10K), "acc")}
+    assert sections["1A"].text.startswith("Item 1A")

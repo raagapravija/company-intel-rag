@@ -49,7 +49,7 @@ type; they stay `verified: false` until someone writes and checks their answers.
 | Router | chosen retrievers vs `expected_retrievers` |
 | Text2Cypher (phase 2) | execute generated vs reference Cypher, compare result sets |
 
-The judge is `EVAL_JUDGE_MODEL` (default `openai/gpt-oss-120b` on Groq's free tier), a
+The judge is `EVAL_JUDGE_MODEL` (default `qwen/qwen3.8-27b` on Groq's free tier), a
 different model from the one answering. Judge calls are cached in `eval/.cache`, so
 re-running unchanged questions uses no quota. Budget roughly 10-15 judge calls per
 question; on Groq's free tier (about 1,000 requests/day per model) that is one full run of
