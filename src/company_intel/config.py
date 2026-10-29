@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     # section) and/or with whitespace collapsed (flattened tables put each cell on a line)
     rerank_with_header: bool = True
     rerank_compact_text: bool = False  # measured: no effect
+    # Cache cross-encoder scores in data/cache/rerank.sqlite (keyed by model + exact input)
+    rerank_cache: bool = True
     # Restrict search to the filing year a question names ("fiscal 2025 10-K")
     retrieval_year_filter: bool = True
     # With a company/year filter, score exactly over just those chunks instead of

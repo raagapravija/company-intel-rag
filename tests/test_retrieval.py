@@ -105,3 +105,26 @@ def test_rerank_text():
     )
     off = Settings(rerank_with_header=False, rerank_compact_text=False)
     assert rerank_text(ctx, off) == ctx.text
+
+
+def test_rerank_scores_are_cached(monkeypatch, tmp_path):
+    from company_intel.config import Settings
+    from company_intel.retrieval import RetrievedContext, rerank
+
+    calls = []
+
+    class Fake:
+        def predict(self, pairs, batch_size):
+            calls.append(len(pairs))
+            return [float(len(p)) for _, p in pairs]
+
+    monkeypatch.setattr(rerank, "_local_reranker", lambda name: Fake())
+    s = Settings(data_dir=tmp_path, rerank_provider="local", rerank_with_header=False)
+
+    def ctxs(*texts):
+        return [RetrievedContext(text=t, source="hybrid") for t in texts]
+
+    first = [c.text for c in rerank.rerank("q", ctxs("a", "bbb", "cc"), top_k=2, settings=s)]
+    assert first == ["bbb", "cc"] and calls == [3]
+    again = [c.text for c in rerank.rerank("q", ctxs("a", "bbb", "dddd"), top_k=2, settings=s)]
+    assert again == ["dddd", "bbb"] and calls == [3, 1]  # only the new passage is scored

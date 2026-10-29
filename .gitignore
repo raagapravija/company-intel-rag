@@ -14,6 +14,7 @@ build/
 # Data (raw downloads and local Neo4j volumes stay out of git)
 data/raw/
 data/processed/
+data/cache/
 neo4j/data/
 neo4j/logs/
 neo4j/import/
