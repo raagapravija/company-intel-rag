@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from neo4j import Driver
-
 from company_intel.db import run_read, run_write
 from company_intel.ingestion.chunking import Chunk, Section
 from company_intel.ingestion.edgar import FilingRef
+from neo4j import Driver
 
 UPSERT_FILING = """
 MERGE (co:Company {cik: $cik})

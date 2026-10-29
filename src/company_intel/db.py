@@ -6,9 +6,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from neo4j import Driver, GraphDatabase, RoutingControl
-
 from company_intel.config import Settings, get_settings
+from neo4j import Driver, GraphDatabase, RoutingControl
 
 
 def make_driver(settings: Settings | None = None, *, readonly: bool = False) -> Driver:

@@ -19,8 +19,13 @@ def test_only_verified_questions_with_answers_count():
         {"id": "c", "verified": True, "reference_answer": None},
     ]
     assert [q["id"] for q in run.ready_questions(qs)] == ["a"]
-    # The shipped seed questions are unverified, so nothing is scored yet.
-    assert run.ready_questions(run.load_questions()) == []
+    # On the real file, only human-verified questions with references are scored.
+    shipped = run.load_questions()
+    ready_ids = {q["id"] for q in run.ready_questions(shipped)}
+    assert ready_ids == {
+        q["id"] for q in shipped if q.get("verified") and q.get("reference_answer")
+    }
+    assert not any(q["id"] in ready_ids for q in shipped if not q.get("verified"))
 
 
 def test_router_accuracy():
