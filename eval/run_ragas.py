@@ -4,8 +4,13 @@
     uv run python eval/run_ragas.py --limit 10         # quick check
     uv run python eval/run_ragas.py --metrics faithfulness context_recall
 
-Free-tier budget: each question costs ~1 answer call plus ~5-15 judge calls (context
-precision makes one call per retrieved context). Judge responses are cached on disk
+Retrieval is also scored without any LLM, against each question's gold chunk ids
+(reference_contexts): retrieval_hit (gold among the hybrid candidates), rerank_hit (gold
+in the reranked top-k) and mrr (reciprocal rank of the first gold chunk after reranking).
+
+Free-tier budget: each question costs ~1 answer call plus judge calls. The default
+metrics (faithfulness, factual_correctness) take ~3-4 judge calls per question; context
+precision alone makes one call per retrieved context. Judge responses are cached on disk
 (eval/.cache), so re-running unchanged questions is free.
 """
 
@@ -30,6 +35,8 @@ ALL_METRICS = [
     "answer_relevancy",
     "factual_correctness",
 ]
+# Fits a ~100 requests/day judge quota for ~20 questions
+DEFAULT_METRICS = ["faithfulness", "factual_correctness"]
 
 
 def load_questions(path: Path = EVAL_DIR / "questions.jsonl") -> list[dict]:
@@ -46,6 +53,19 @@ def router_accuracy(chosen: list[str], expected: list[str]) -> float:
     """Jaccard overlap between the retrievers the router chose and the expected ones."""
     a, b = set(chosen), set(expected)
     return len(a & b) / len(a | b) if a | b else 1.0
+
+
+def retrieval_scores(gold: list[str], candidates: list[str], reranked: list[str]) -> dict:
+    """LLM-free retrieval metrics against the gold chunk ids; empty if there is no gold."""
+    if not gold:
+        return {}
+    gold_set = set(gold)
+    rank = next((i for i, cid in enumerate(reranked, 1) if cid in gold_set), None)
+    return {
+        "retrieval_hit": float(bool(gold_set & set(candidates))),
+        "rerank_hit": float(rank is not None),
+        "mrr": 1.0 / rank if rank else 0.0,
+    }
 
 
 def run_agent(questions: list[dict]) -> list[dict]:
@@ -66,6 +86,8 @@ def run_agent(questions: list[dict]) -> list[dict]:
                 "answer": state.get("answer", ""),
                 "contexts": contexts,
                 "context_ids": [c.metadata.get("chunk_id") for c in state.get("reranked", [])],
+                "candidate_ids": [c.metadata.get("chunk_id") for c in state.get("contexts", [])],
+                "reference_contexts": q.get("reference_contexts", []),
                 "retrievers": state.get("retrievers", []),
                 "expected_retrievers": q.get("expected_retrievers", []),
                 "latency_s": round(time.time() - t0, 2),
@@ -132,7 +154,7 @@ async def score(records: list[dict], metrics: list[str]) -> None:
     for i, r in enumerate(records, 1):
         r["scores"] = {
             "router_accuracy": router_accuracy(r["retrievers"], r["expected_retrievers"])
-        }
+        } | retrieval_scores(r["reference_contexts"], r["candidate_ids"], r["context_ids"])
         for name, (scorer, args) in scorers.items():
             if not r["contexts"] and name != "factual_correctness":
                 r["scores"][name] = 0.0
@@ -176,7 +198,7 @@ def print_table(summary: dict) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int)
-    parser.add_argument("--metrics", nargs="*", default=ALL_METRICS, choices=ALL_METRICS)
+    parser.add_argument("--metrics", nargs="*", default=DEFAULT_METRICS, choices=ALL_METRICS)
     parser.add_argument("--label", default="", help="tag for this run, e.g. 'phase1-baseline'")
     args = parser.parse_args()
 

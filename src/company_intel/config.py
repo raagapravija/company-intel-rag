@@ -14,6 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # OpenAI-compatible endpoints for free LLM options.
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 OLLAMA_BASE_URL = "http://localhost:11434/v1"
 
 
@@ -50,9 +51,9 @@ class Settings(BaseSettings):
     llm_reasoning_effort: str = "low"
 
     # Ragas judge: use a different model from the one answering, kept fixed across runs
-    eval_judge_base_url: str = GROQ_BASE_URL
+    eval_judge_base_url: str = GEMINI_BASE_URL
     eval_judge_api_key: SecretStr | None = None  # falls back to llm_api_key
-    eval_judge_model: str = "qwen/qwen3.8-27b"
+    eval_judge_model: str = "gemini-3.8-flash"
 
     # SEC
     sec_user_agent: str = "company-intel-rag contact@example.com"

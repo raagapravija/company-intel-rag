@@ -53,3 +53,47 @@ def test_next_question_id():
     review = _load("review")
     assert review.next_question_id([{"id": "q007"}, {"id": "q002"}, {"id": "cand-x"}]) == "q008"
     assert review.next_question_id([]) == "q001"
+
+
+def test_retrieval_scores():
+    run = _load("run_ragas")
+    s = run.retrieval_scores(["g"], ["x", "g", "y"], ["x", "y", "g"])
+    assert s == {"retrieval_hit": 1.0, "rerank_hit": 1.0, "mrr": 1 / 3}
+    # Found by hybrid search but dropped by the reranker
+    s = run.retrieval_scores(["g"], ["g", "x"], ["x"])
+    assert s == {"retrieval_hit": 1.0, "rerank_hit": 0.0, "mrr": 0.0}
+    assert run.retrieval_scores([], ["g"], ["g"]) == {}
+
+
+def test_same_text_matches_repeated_paragraph_not_neighbour():
+    rr = _load("run_retrieval")
+    a = "Our profit margins vary due to a number of factors including product mix. "
+    b = "We operate in a highly competitive market that might affect our pricing. "
+    c = "Because we own much of our manufacturing capacity, many costs are fixed. "
+    gold = a + b + c
+    assert rr.same_text(gold, "Item 1A. Risk Factors. " + a + b + c)  # other year, shifted
+    assert not rr.same_text(gold, c + "An unrelated sentence about distributors and their pay.")
+    assert not rr.same_text("short.", "short.")  # nothing long enough to compare
+
+
+def test_score_ranking():
+    rr = _load("run_retrieval")
+    gold = ["acc1:1A:5"]
+    top = [("acc1:1A:4", "x"), ("acc2:1A:5", "y"), ("acc1:1A:5", "z")]
+    s = rr.score_ranking(gold, ["gold text"], top, [cid for cid, _ in top])
+    assert s["hit@1"] == 0.0 and s["hit@3"] == 1.0 and s["mrr"] == 1 / 3
+    assert s["recall@30"] == 1.0 and s["text_hit@8"] == 1.0
+    assert s["same_filing@8"] == 2 / 3
+    miss = rr.score_ranking(gold, ["gold text"], [("acc2:7:1", "other")], ["acc2:7:1", *gold])
+    assert miss["hit@8"] == 0.0 and miss["recall@30"] == 1.0 and miss["text_hit@8"] == 0.0
+
+
+def test_retrieval_summary_groups():
+    rr = _load("run_retrieval")
+    recs = [
+        {"type": "lookup", "fiscal_year": 2024, "scores": {"vector": {"mrr": 1.0}}},
+        {"type": "lookup", "fiscal_year": 2025, "scores": {"vector": {"mrr": 0.0}}},
+    ]
+    s = rr.summarize(recs)
+    assert s["ALL"]["vector"] == {"mrr": 0.5, "n": 2}
+    assert s["FY2024"]["vector"]["mrr"] == 1.0

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from company_intel.config import CompanyConfig, Settings, get_settings, load_companies
 from company_intel.retrieval import RetrievedContext
@@ -30,6 +31,8 @@ CALL db.index.fulltext.queryNodes('{CHUNK_FULLTEXT_INDEX}', $query, {{limit: $fe
 YIELD node AS chunk, score
 {_RETURN}
 """
+
+SearchMode = Literal["vector", "fulltext", "hybrid"]
 
 _LUCENE_SPECIAL = re.compile(r'([+\-&|!(){}\[\]^"~*?:\\/])')
 
@@ -66,7 +69,9 @@ def hybrid_search(
     k: int | None = None,
     tickers: list[str] | None = None,
     settings: Settings | None = None,
+    mode: SearchMode = "hybrid",
 ) -> list[RetrievedContext]:
+    """Top-k chunks for a question. mode="vector" is the plain-vector baseline."""
     from company_intel.db import make_driver, run_read
     from company_intel.embeddings import embed_query
 
@@ -78,11 +83,11 @@ def hybrid_search(
 
     driver = make_driver(s)
     try:
-        vec_rows = run_read(
+        vec_rows = [] if mode == "fulltext" else run_read(
             driver, VECTOR_QUERY, embedding=embed_query(question, s), k=k,
             fetch_k=fetch_k, tickers=tickers,
         )
-        ft_rows = run_read(
+        ft_rows = [] if mode == "vector" else run_read(
             # Lowercase so words like AND/OR/NOT in a question aren't read as Lucene operators.
             driver, FULLTEXT_QUERY, query=lucene_escape(question.lower()), k=k,
             fetch_k=fetch_k, tickers=tickers,
@@ -91,7 +96,8 @@ def hybrid_search(
         driver.close()
 
     rows = {r["id"]: r for r in vec_rows + ft_rows}
-    fused = reciprocal_rank_fusion([[r["id"] for r in vec_rows], [r["id"] for r in ft_rows]])
+    # RRF over a single list keeps its order, so vector/fulltext modes pass through unchanged.
+    fused = reciprocal_rank_fusion([[r["id"] for r in rs] for rs in (vec_rows, ft_rows) if rs])
     out = []
     for chunk_id, score in fused[:k]:
         r = rows[chunk_id]

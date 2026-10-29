@@ -29,7 +29,7 @@ plain-vector baseline, per question type.
 | Reranker | `BAAI/bge-reranker-v2-m3` cross-encoder, local; top 30 -> 8 |
 | Search | Neo4j vector index (HNSW, cosine) + full-text (Lucene BM25), fused with RRF k=60 |
 | LLM | Groq `openai/gpt-oss-120b`, `reasoning_effort=low`, via OpenAI-compatible client (`llm.py`) |
-| Ragas judge | Groq `qwen/qwen3.8-27b` (must differ from the answering model) |
+| Ragas judge | Gemini `gemini-3.8-flash` via AI Studio free tier (different family from the answering model; ~100 req/day) |
 | Orchestration | LangGraph: route -> retrieve -> rerank -> generate -> verify (retry loop) |
 
 Groq free tier: ~30 requests/min, ~8,000 tokens/min, ~1,000 requests/day per model.
@@ -50,7 +50,8 @@ uv run python -m company_intel.ingestion.run --tickers INTC --force   # reload a
 make ask Q="What does NVIDIA say about supply-chain risk?"
 make draft                    # LLM drafts candidate questions -> eval/candidates.jsonl
 make review R=pravija         # interactive human review (needs a real terminal)
-make eval L=phase1-baseline   # Ragas run -> eval/results/<timestamp>-<label>.json
+make eval-retrieval L=phase1-baseline  # LLM-free retrieval scores, primary eval, no API calls
+make eval L=phase1-baseline   # Ragas (judge quota-limited; use --limit for spot checks)
 ```
 
 Neo4j Browser: http://localhost:7474 (user `neo4j`, password from `.env`).
@@ -83,6 +84,9 @@ tests/                pytest; everything external is mocked
   sections/chunks first so nothing stale remains.
 - **Company filter is a post-filter**: Neo4j 5's vector index can't pre-filter, so
   `hybrid_search` fetches 5x candidates when a ticker is named, then filters in Cypher.
+- **Groq's `qwen/qwen3.8-27b` can't be the judge**: 1,000 output tokens/min cap rejects every
+  Ragas call (429). Judge moved to Gemini; default metrics are faithfulness +
+  factual_correctness plus LLM-free retrieval_hit / rerank_hit / mrr on gold chunk ids.
 - **Ragas 0.4** needs `langchain-community<0.4` (pinned). Uses `ragas.metrics.collections`
   and `llm_factory(..., client=AsyncOpenAI(...))`. Judge calls are cached in `eval/.cache`.
 - **gpt-oss is a reasoning model**: reasoning tokens count against `max_tokens`
@@ -106,7 +110,10 @@ RETURN ticker, fy, collect(item + ':' + chunks) AS sections
 - `make ask` works end to end.
 - Eval: 20 lookup questions verified; remaining candidates unreviewed.
   q001-q007 are unverified seed examples for later phases.
-- No Ragas run yet.
+- Primary eval is LLM-free (`eval/run_retrieval.py`): hit@k/MRR/recall@30 on gold chunk ids,
+  text_hit@8 (same paragraph elsewhere), same_filing@8 (year bias), across vector /
+  fulltext / hybrid / hybrid+rerank. Ragas is optional: free judges are too rate-limited
+  for full runs. Gold ids depend on chunking, so keep chunking fixed while comparing.
 
 First answer observations (to measure, not yet fix): answers favor the older FY2024
 filing over FY2025 and don't state the year per fact; NVIDIA's dependence on TSMC/foundries

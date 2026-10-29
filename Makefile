@@ -1,4 +1,4 @@
-.PHONY: install up down schema test lint ingest ask draft review eval
+.PHONY: install up down schema test lint ingest ask draft review eval eval-retrieval
 
 install:
 	uv sync --all-extras
@@ -37,3 +37,8 @@ review:
 # make eval L=phase1-baseline
 eval:
 	uv run python eval/run_ragas.py $(if $(L),--label $(L),)
+
+# LLM-free retrieval scores (vector vs fulltext vs hybrid vs hybrid+rerank); no API calls
+# make eval-retrieval L=phase1-baseline
+eval-retrieval:
+	uv run python eval/run_retrieval.py $(if $(L),--label $(L),)

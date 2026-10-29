@@ -3,7 +3,8 @@
 Hybrid retrieval-augmented generation over a Neo4j knowledge graph of SEC filings,
 structured financials, institutional holdings and news. A LangGraph agent routes each
 question to the right retrieval method (or several), reranks the results, answers with
-citations and checks that every claim is grounded. Ragas measures each part.
+citations and checks that every claim is grounded. Retrieval is scored without an LLM
+against human-verified gold passages; Ragas adds answer-quality spot checks.
 
 ## Why hybrid
 
@@ -44,7 +45,7 @@ company it belongs to and on to that company's suppliers. See [docs/schema.md](d
 | Embeddings / reranking | `BAAI/bge-m3` + `BAAI/bge-reranker-v2-m3`, run locally (Voyage optional) |
 | Orchestration | LangGraph |
 | LLM | Groq free tier (`openai/gpt-oss-120b`) or Ollama, via one OpenAI-compatible client |
-| Evaluation | Ragas (judge: `qwen/qwen3.8-27b` on Groq) + custom router metric |
+| Evaluation | LLM-free retrieval metrics (hit@k, MRR) on gold chunks; Ragas spot checks (judge: Gemini) |
 | Tracing | Langfuse (free tier) |
 | API / UI | FastAPI, Streamlit |
 
@@ -94,11 +95,11 @@ docs/schema.md                  graph model
 
 ## Roadmap
 
-Each phase ends with a Ragas run compared against the phase 1 baseline.
+Each phase ends with an eval run compared against the phase 1 baseline.
 
 - [x] **Phase 0** Skeleton: config, Docker, schema, agent graph shape, tests
 - [x] **Phase 1** Plain vector RAG: EDGAR fetch, section-aware chunking, local embeddings, hybrid search, rerank, cited answers, question review workflow, Ragas runner
-- [ ] **Phase 1b** First real run: ingest, verify ~15 lookup questions, record baseline Ragas scores
+- [x] **Phase 1b** First real run: ingest, verify 20 lookup questions, record LLM-free retrieval baseline
 - [ ] **Phase 2** Structured data: XBRL financial facts, 13F holdings, Text2Cypher with read-only user
 - [ ] **Phase 3** Knowledge graph: LLM entity + relationship extraction, entity resolution, graph traversal retriever
 - [ ] **Phase 4** News ingestion and recency-aware retrieval
@@ -109,3 +110,11 @@ Each phase ends with a Ragas run compared against the phase 1 baseline.
 See [eval/README.md](eval/README.md). Every reference answer is checked by a person
 against the source filing before it counts; numeric references come straight from SEC
 data. Scores are reported per question type so each retriever's contribution is visible.
+
+The primary eval needs no LLM and no API key (`make eval-retrieval`). Each verified
+question carries the id of the chunk its answer comes from, and every question runs
+through four configs: plain vector (the baseline), full-text, hybrid (RRF) and hybrid +
+rerank. Metrics: hit@1/3/8 and MRR on the gold chunk, recall@30 before reranking,
+text_hit@8 (the same paragraph found elsewhere, e.g. in the other year's filing) and
+same_filing@8 (how much of the top 8 comes from the right filing). Free LLM judges are
+too rate-limited for full Ragas runs, so Ragas (`make eval`) is used for spot checks.
