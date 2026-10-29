@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     # Retrieval
     retrieval_k: int = 30
     rerank_top_k: int = 8
+    # Restrict search to the filing year a question names ("fiscal 2025 10-K")
+    retrieval_year_filter: bool = True
+    # With a company/year filter, score exactly over just those chunks instead of
+    # post-filtering the global vector index (which can leave far fewer than k results)
+    retrieval_exact_filtered: bool = True
 
     # Paths
     data_dir: Path = PROJECT_ROOT / "data"

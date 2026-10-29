@@ -82,8 +82,11 @@ tests/                pytest; everything external is mocked
   change, check every filing with the Cypher below: each should have 1A and 7 with many chunks.
 - **Re-ingesting** a filing needs `--force`; `load_filing` deletes the filing's old
   sections/chunks first so nothing stale remains.
-- **Company filter is a post-filter**: Neo4j 5's vector index can't pre-filter, so
-  `hybrid_search` fetches 5x candidates when a ticker is named, then filters in Cypher.
+- **Company/year filters**: Neo4j 5's vector index can't pre-filter, and post-filtering left
+  as few as 11 of 30 results. When a ticker or fiscal year is named, `hybrid_search` scores
+  exact cosine over just those chunks (`RETRIEVAL_EXACT_FILTERED`). The year comes from
+  "fiscal YYYY 10-K" in the question (`RETRIEVAL_YEAR_FILTER`); setting both false
+  reproduces the phase 1 baseline.
 - **Groq's `qwen/qwen3.8-27b` can't be the judge**: 1,000 output tokens/min cap rejects every
   Ragas call (429). Judge moved to Gemini; default metrics are faithfulness +
   factual_correctness plus LLM-free retrieval_hit / rerank_hit / mrr on gold chunk ids.

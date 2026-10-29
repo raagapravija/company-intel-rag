@@ -45,10 +45,47 @@ def test_hybrid_search_modes(monkeypatch):
 
     def ids(mode):
         calls.clear()
-        out = hybrid.hybrid_search("q", k=3, tickers=["X"], mode=mode)
+        out = hybrid.hybrid_search("q", k=3, tickers=["X"], mode=mode, years=[2025])
         return [c.metadata["chunk_id"] for c in out], list(calls)
 
     assert ids("vector") == (["v1", "v2"], ["vector"])
     assert ids("fulltext") == (["f1", "v2"], ["fulltext"])
     fused, used = ids("hybrid")
     assert fused[0] == "v2" and set(fused) == {"v1", "v2", "f1"} and used == ["vector", "fulltext"]
+
+
+def test_detect_fiscal_years():
+    from company_intel.retrieval.hybrid import detect_fiscal_years
+
+    q = "In its fiscal 2025 10-K, what were Intel's charges for fiscal 2025 vs fiscal 2024?"
+    assert detect_fiscal_years(q) == [2025]
+    assert detect_fiscal_years("Compare NVIDIA revenue in fiscal 2024 and FY2025") == [2024, 2025]
+    assert detect_fiscal_years("What does NVIDIA say about supply-chain risk?") is None
+
+
+def test_filtered_search_scores_exactly(monkeypatch):
+    import company_intel.db as db
+    import company_intel.embeddings as emb
+    from company_intel.config import Settings
+    from company_intel.retrieval import hybrid
+
+    seen = []
+
+    def fake_read(driver, cypher, **params):
+        seen.append((cypher, params))
+        return []
+
+    monkeypatch.setattr(db, "make_driver", lambda s: type("D", (), {"close": lambda self: None})())
+    monkeypatch.setattr(db, "run_read", fake_read)
+    monkeypatch.setattr(emb, "embed_query", lambda q, s: [0.0])
+
+    hybrid.hybrid_search("NVIDIA fiscal 2025 10-K risks", k=3, tickers=["NVDA"])
+    (vec, vp), (_, fp) = seen
+    assert vec == hybrid.EXACT_VECTOR_QUERY and vp["years"] == [2025]
+    assert fp["fetch_k"] == hybrid.FULLTEXT_FILTERED_FETCH
+
+    seen.clear()
+    off = Settings(retrieval_exact_filtered=False, retrieval_year_filter=False)
+    hybrid.hybrid_search("NVIDIA fiscal 2025 10-K risks", k=3, tickers=["NVDA"], settings=off)
+    (vec, vp), _ = seen
+    assert vec == hybrid.VECTOR_QUERY and vp["years"] is None and vp["fetch_k"] == 15

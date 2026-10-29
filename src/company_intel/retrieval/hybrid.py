@@ -11,7 +11,8 @@ from company_intel.schema import CHUNK_FULLTEXT_INDEX, VECTOR_INDEX
 
 _RETURN = """
 MATCH (co:Company)-[:FILED]->(f:Filing)-[:HAS_SECTION]->(s:Section)-[:HAS_CHUNK]->(chunk)
-WHERE $tickers IS NULL OR co.ticker IN $tickers
+WHERE ($tickers IS NULL OR co.ticker IN $tickers)
+  AND ($years IS NULL OR f.fiscal_year IN $years)
 RETURN chunk.id AS id, chunk.text AS text, score,
        co.ticker AS ticker, co.name AS company, f.form AS form, f.accession AS accession,
        f.fiscal_year AS fiscal_year, f.url AS url, s.item AS item, s.title AS section
@@ -19,10 +20,21 @@ ORDER BY score DESC
 LIMIT $k
 """
 
-# fetch_k > k so a ticker filter applied after the index lookup still leaves k results.
+# fetch_k > k so ticker/year filters applied after the index lookup still leave k results.
 VECTOR_QUERY = f"""
 CALL db.index.vector.queryNodes('{VECTOR_INDEX}', $fetch_k, $embedding)
 YIELD node AS chunk, score
+{_RETURN}
+"""
+
+# Exact cosine over the filtered chunks (one company has ~250), so k results are guaranteed.
+EXACT_VECTOR_QUERY = f"""
+MATCH (co:Company)-[:FILED]->(f:Filing)-[:HAS_SECTION]->(:Section)-[:HAS_CHUNK]->(chunk)
+WHERE ($tickers IS NULL OR co.ticker IN $tickers)
+  AND ($years IS NULL OR f.fiscal_year IN $years)
+WITH chunk, vector.similarity.cosine(chunk.embedding, $embedding) AS score
+ORDER BY score DESC
+LIMIT $k
 {_RETURN}
 """
 
@@ -33,6 +45,8 @@ YIELD node AS chunk, score
 """
 
 SearchMode = Literal["vector", "fulltext", "hybrid"]
+
+FULLTEXT_FILTERED_FETCH = 2000
 
 _LUCENE_SPECIAL = re.compile(r'([+\-&|!(){}\[\]^"~*?:\\/])')
 
@@ -53,6 +67,17 @@ def detect_tickers(question: str, companies: CompanyConfig | None = None) -> lis
     return found or None
 
 
+_FILING_YEAR = re.compile(r"\bfiscal (?:year )?(20\d{2}) (?:form )?10-K\b", re.IGNORECASE)
+_FISCAL_YEAR = re.compile(r"\b(?:fiscal (?:year )?|FY\s?)(20\d{2})\b", re.IGNORECASE)
+
+
+def detect_fiscal_years(question: str) -> list[int] | None:
+    """Filing years a question asks about, or None. "In its fiscal 2025 10-K ... fiscal 2024"
+    names the 2025 filing (which also reports 2024), so an explicit filing year wins."""
+    years = _FILING_YEAR.findall(question) or _FISCAL_YEAR.findall(question)
+    return sorted({int(y) for y in years}) or None
+
+
 def reciprocal_rank_fusion(
     ranked_lists: list[list[str]], k: int = 60
 ) -> list[tuple[str, float]]:
@@ -70,6 +95,7 @@ def hybrid_search(
     tickers: list[str] | None = None,
     settings: Settings | None = None,
     mode: SearchMode = "hybrid",
+    years: list[int] | None = None,
 ) -> list[RetrievedContext]:
     """Top-k chunks for a question. mode="vector" is the plain-vector baseline."""
     from company_intel.db import make_driver, run_read
@@ -79,18 +105,22 @@ def hybrid_search(
     k = k or s.retrieval_k
     if tickers is None:
         tickers = detect_tickers(question)
-    fetch_k = k * 5 if tickers else k
+    if years is None and s.retrieval_year_filter:
+        years = detect_fiscal_years(question)
+    exact = bool(tickers or years) and s.retrieval_exact_filtered
+    fetch_k = k * (5 if tickers else 1) * (2 if years else 1)
 
     driver = make_driver(s)
     try:
         vec_rows = [] if mode == "fulltext" else run_read(
-            driver, VECTOR_QUERY, embedding=embed_query(question, s), k=k,
-            fetch_k=fetch_k, tickers=tickers,
+            driver, EXACT_VECTOR_QUERY if exact else VECTOR_QUERY,
+            embedding=embed_query(question, s), k=k, fetch_k=fetch_k, tickers=tickers, years=years,
         )
         ft_rows = [] if mode == "vector" else run_read(
             # Lowercase so words like AND/OR/NOT in a question aren't read as Lucene operators.
+            # Full-text lookups are cheap, so read deep enough that the filter leaves k.
             driver, FULLTEXT_QUERY, query=lucene_escape(question.lower()), k=k,
-            fetch_k=fetch_k, tickers=tickers,
+            fetch_k=FULLTEXT_FILTERED_FETCH if exact else fetch_k, tickers=tickers, years=years,
         )
     finally:
         driver.close()
