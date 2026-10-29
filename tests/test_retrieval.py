@@ -89,3 +89,19 @@ def test_filtered_search_scores_exactly(monkeypatch):
     hybrid.hybrid_search("NVIDIA fiscal 2025 10-K risks", k=3, tickers=["NVDA"], settings=off)
     (vec, vp), _ = seen
     assert vec == hybrid.VECTOR_QUERY and vp["years"] is None and vp["fetch_k"] == 15
+
+
+def test_rerank_text():
+    from company_intel.config import Settings
+    from company_intel.retrieval import RetrievedContext
+    from company_intel.retrieval.rerank import rerank_text
+
+    meta = {"company": "NVIDIA Corp", "ticker": "NVDA", "form": "10-K", "fiscal_year": 2024,
+            "item": "7", "section": "MD&A"}
+    ctx = RetrievedContext(text="R&D expenses\n$\n8,675\n$\n7,339", source="hybrid", metadata=meta)
+    on = Settings(rerank_with_header=True, rerank_compact_text=True)
+    assert rerank_text(ctx, on) == (
+        "NVIDIA Corp (NVDA) 10-K FY2024, Item 7 MD&A\nR&D expenses $ 8,675 $ 7,339"
+    )
+    off = Settings(rerank_with_header=False, rerank_compact_text=False)
+    assert rerank_text(ctx, off) == ctx.text

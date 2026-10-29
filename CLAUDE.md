@@ -90,6 +90,11 @@ tests/                pytest; everything external is mocked
 - **Groq's `qwen/qwen3.8-27b` can't be the judge**: 1,000 output tokens/min cap rejects every
   Ragas call (429). Judge moved to Gemini; default metrics are faithfulness +
   factual_correctness plus LLM-free retrieval_hit / rerank_hit / mrr on gold chunk ids.
+- **Reranker needs the source header**: the cross-encoder used to see bare chunk text (no
+  company/year/section), so table-heavy MD&A chunks lost to look-alikes. Prepending the
+  same header used at embedding (`RERANK_WITH_HEADER`) took rerank MRR 0.72 -> 0.93.
+  Collapsing whitespace (`RERANK_COMPACT_TEXT`) had no effect. Reranking costs ~40-65 s
+  per question on CPU.
 - **Ragas 0.4** needs `langchain-community<0.4` (pinned). Uses `ragas.metrics.collections`
   and `llm_factory(..., client=AsyncOpenAI(...))`. Judge calls are cached in `eval/.cache`.
 - **gpt-oss is a reasoning model**: reasoning tokens count against `max_tokens`

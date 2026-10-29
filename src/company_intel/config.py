@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     # Retrieval
     retrieval_k: int = 30
     rerank_top_k: int = 8
+    # What the cross-encoder reads: chunk text with its source header (company, year,
+    # section) and/or with whitespace collapsed (flattened tables put each cell on a line)
+    rerank_with_header: bool = True
+    rerank_compact_text: bool = False  # measured: no effect
     # Restrict search to the filing year a question names ("fiscal 2025 10-K")
     retrieval_year_filter: bool = True
     # With a company/year filter, score exactly over just those chunks instead of
